@@ -13,9 +13,16 @@
   /* Top fixed ad bar during gameplay */
   #topAd { position:absolute; top:0; left:0; right:0; z-index:6; display:none;
     justify-content:center; align-items:center; min-height:54px; max-height:60px; overflow:hidden;
-    background:rgba(6,18,14,0.55); }
+    background:#06120e; border-bottom:1px solid rgba(120,200,170,0.25); }
   #topAd.show { display:flex; }
   #topAd > * { max-height:60px; }
+
+  /* 忍者AdMaxが自動で出す画面下部の固定広告を非表示にする */
+  body > div[id^="admax"],
+  body > ins,
+  iframe[src*="shinobi"]:not(#topAd iframe):not(#startAd iframe):not(#overAd iframe) {
+    /* これだけでは効かない場合があるのでJSでも対処 */
+  }
 
   /* Sound toggle */
   #soundBtn { position:absolute; bottom:16px; right:16px; z-index:7; width:48px; height:48px;
@@ -745,6 +752,30 @@ function drawItem(it){
 
 // ===== Boot =====
 buildLegend();
+
+// 忍者AdMaxが自動挿入する画面下部の固定広告を監視して隠す
+// （自分で配置した #topAd / #startAd / #overAd 内の広告は残す）
+function hideInjectedAds(){
+  const ourAds = ['topAd','startAd','overAd'];
+  document.querySelectorAll('body *').forEach(el=>{
+    if(el.tagName!=='IFRAME' && el.tagName!=='INS' && el.tagName!=='DIV') return;
+    // 自分の広告枠の中にある要素はスキップ
+    let inOurs=false, n=el;
+    while(n){ if(ourAds.includes(n.id)){inOurs=true;break;} n=n.parentElement; }
+    if(inOurs) return;
+    const st=window.getComputedStyle(el);
+    // position:fixed で画面下部に貼り付く広告を非表示
+    if(st.position==='fixed'){
+      const rect=el.getBoundingClientRect();
+      // 画面下半分にある固定要素＝自動挿入広告とみなす（soundBtnは除外）
+      if(el.id!=='soundBtn' && rect.top > window.innerHeight*0.4){
+        el.style.setProperty('display','none','important');
+      }
+    }
+  });
+}
+setInterval(hideInjectedAds, 500);
+
 loadImages(()=>{ /* images ready */ });
 requestAnimationFrame(update);
 
