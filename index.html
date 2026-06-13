@@ -290,10 +290,10 @@ function initObstacles() {
 function spawnPredator(typeForce) {
   const side = Math.floor(Math.random()*4);
   let x,y;
-  if(side===0){x=-50;y=Math.random()*H;}
-  else if(side===1){x=W+50;y=Math.random()*H;}
-  else if(side===2){x=Math.random()*W;y=-50;}
-  else{x=Math.random()*W;y=H+50;}
+  if(side===0){x=25;y=Math.random()*H;}
+  else if(side===1){x=W-25;y=Math.random()*H;}
+  else if(side===2){x=Math.random()*W;y=25;}
+  else{x=Math.random()*W;y=H-25;}
 
   let type = typeForce;
   if(!type){
@@ -303,6 +303,11 @@ function spawnPredator(typeForce) {
     if(t < 12){ type = r<0.6?'chaser':(r<0.85?'wanderer':'interceptor'); }
     else if(t < 30){ type = r<0.4?'chaser':(r<0.62?'wanderer':(r<0.82?'interceptor':'striker')); }
     else { type = r<0.3?'chaser':(r<0.5?'wanderer':(r<0.72?'interceptor':'striker')); }
+    // 先回り型は最大2匹までに制限（重なって同じ動きになるのを防ぐ）
+    if(type==='interceptor'){
+      const icount = predators.filter(p=>p.type==='interceptor').length;
+      if(icount>=2) type = Math.random()<0.5?'chaser':'wanderer';
+    }
   }
 
   const black = (type==='interceptor' || type==='striker') ? true : (Math.random()<0.3);
@@ -402,9 +407,10 @@ function update(now){
     document.getElementById('hudScore').textContent=elapsed.toFixed(1);
     if(!fry.hatched){fry.hatchT+=dt; if(fry.hatchT>0.9){fry.hatched=true; sfx('hatch');}}
 
-    const targetCount=Math.min(2+Math.floor(elapsed/6),13);
+    // 数は時間経過でどんどん増える（上限なしに近い）
+    const targetCount = Math.floor(3 + elapsed/4);
     spawnTimer-=dt;
-    if(predators.length<targetCount && spawnTimer<=0){spawnPredator(); spawnTimer=1.0;}
+    if(predators.length<targetCount && spawnTimer<=0){spawnPredator(); spawnTimer=0.5;}
 
     itemTimer-=dt;
     if(itemTimer<=0 && items.length<3){spawnItem(); itemTimer=3+Math.random()*2.5;}
@@ -424,8 +430,8 @@ function update(now){
     oxygen = Math.max(0, Math.min(100, oxygen));
     if(oxygen<=0){ burst(fry.x,fry.y,'160,200,255',20); gameOver(); }
 
-    // === Predator global speed ramps up over time ===
-    globalSpeedMul = 1 + Math.min(elapsed/40, 0.9);  // up to +90% by ~40s
+    // === 大人メダカは時間経過でどんどん速くなる（上限なし） ===
+    globalSpeedMul = 1 + elapsed*0.06;  // 30秒で+180%、60秒で+360%
 
     // oxygen item spawn (separate, always keep ~1 available)
     oxyItemTimer-=dt;
@@ -506,13 +512,27 @@ function updatePredators(dt){
       const dx=tx-p.x, dy=ty-p.y, d=Math.hypot(dx,dy)||1;
       const sp=accel*globalSpeedMul*60*dt;
       p.vx+=(dx/d)*sp*0.06; p.vy+=(dy/d)*sp*0.06;
+
+      // 画面内に留める力：端に近づくと中央へ押し返す
+      const margin=70;
+      if(p.x<margin) p.vx += (margin-p.x)*0.012;
+      if(p.x>W-margin) p.vx -= (p.x-(W-margin))*0.012;
+      if(p.y<margin) p.vy += (margin-p.y)*0.012;
+      if(p.y>H-margin) p.vy -= (p.y-(H-margin))*0.012;
+
       p.vx*=0.9; p.vy*=0.9;
+      // 速度上限（速くなりすぎても画面外へ飛び出さない）
+      const vmax = 14*globalSpeedMul*0.5 + 6;
+      const vv=Math.hypot(p.vx,p.vy);
+      if(vv>vmax){p.vx=p.vx/vv*vmax; p.vy=p.vy/vv*vmax;}
+
       p.x+=p.vx; p.y+=p.vy;
       if(Math.hypot(p.vx,p.vy)>0.3) p.ang=Math.atan2(p.vy,p.vx);
     }
 
-    // bounce off screen edges loosely
-    if(p.x<-60)p.x=-60; if(p.x>W+60)p.x=W+60; if(p.y<-60)p.y=-60; if(p.y>H+60)p.y=H+60;
+    // hard clamp inside screen
+    p.x=Math.max(20,Math.min(W-20,p.x));
+    p.y=Math.max(20,Math.min(H-20,p.y));
 
     // collision with fry
     if(state==='playing' && fry.hatched && hideBuff<=0){
